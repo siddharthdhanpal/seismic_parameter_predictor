@@ -19,6 +19,8 @@ from tensorflow.keras.utils import plot_model
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.models import model_from_yaml
+import yaml
+from tensorflow.python.keras.layers import deserialize
 
 
 #Using GPU
@@ -53,9 +55,9 @@ num_class = 4
 batch_size = 128
 steps_per_epoch = 200 #number of training steps
 validation_steps = 10 #number of validation steps
-num_examples = num_train + num_val + num_test
 pos_enc  = True
 num_epochs     = 10
+initial_epoch  = 0
 num_batchsize  = 128
 
 '''
@@ -74,12 +76,13 @@ print('Time taken for loading mode data= %f s'%(end_time-start_time))
 
 print('loaded mode data and its shape is (%d,%d)'%(labels.shape[0],labels.shape[1]))
 
-labels = skimage.measure.block_reduce(labels,block_size=(1,bin_size),func=np.min)
+#Reduces the labels taking the bin_size number of points to 1 point defined by function in func. Ignores the last label.
+labels = skimage.measure.block_reduce(labels,block_size=(1,bin_size),func=np.min)[:,:-1]
 labels = labels.astype(np.int32)
 
 print('Binned label data and its shape is (%d,%d)'%(labels.shape[0],labels.shape[1]))
 
-
+#Reduces the spectrum data taking the bin_size number of points to 1 point defined by function in func. Ignores the last datapoint.
 start_time=time.time()
 spectrum_data = np.load('./../binned_data/binned_data_100k.npy') #shape=(examples,length of spectrum)
 end_time=time.time()
@@ -87,7 +90,7 @@ print('Time taken for loading spectrum data= %f s'%(end_time-start_time))
 
 print('loaded spectrum data and its shape is (%d,%d)'%(spectrum_data.shape[0],spectrum_data.shape[1]))
 
-spectrum_data = skimage.measure.block_reduce(spectrum_data,block_size=(1,bin_size),func=np.mean)
+spectrum_data = skimage.measure.block_reduce(spectrum_data,block_size=(1,bin_size),func=np.mean)[:,:-1]
 spectrum_data = spectrum_data.reshape(spectrum_data.shape[0],spectrum_data.shape[1],1)
 
 print('Binned spectra data and its shape is (%d,%d,1)'%(spectrum_data.shape[0],spectrum_data.shape[1]))
@@ -189,12 +192,6 @@ def cnn_model(input_size, num_output, filters, kernel_size, strides, pool_size, 
     pos_enc: Positional encoding is set to be false. If True, 
     then the input shape will change accordingly.
     '''
-    kernel_size = 5
-    strides = 1
-    pool_size = 3
-    filters = 16
-    dilation_rate = 1
-
     visible = Input(shape=(input_size,1))
     if pos_enc==True:
         visible = Input(shape=(input_size,2))
@@ -214,7 +211,8 @@ def cnn_model(input_size, num_output, filters, kernel_size, strides, pool_size, 
 
     output=[]
     for i in range(1,num_output+1):
-        vars()["output"+str(i)]= Dense(4, activation='softmax')(flat)#,name='output'+str(i)
+        name = f'output_{i}'
+        vars()["output"+str(i)]= Dense(4, activation='softmax',name=name)(flat)#,name='output'+str(i)
         output.append(vars()["output"+str(i)])
 
     model = Model(inputs=visible, outputs=output)
@@ -229,21 +227,32 @@ model = cnn_model(input_size, num_output,kernel_size = 5,strides = 1,pool_size =
 yaml_file = open('%s/model.yaml'%path, 'r')
 loaded_model_yaml = yaml_file.read()
 yaml_file.close()
-model = model_from_yaml(loaded_model_yaml)
+config = yaml.load(loaded_model_yaml,Loader=yaml.UnsafeLoader)
+model = deserialize(config)
 # load weights into new model
 model.load_weights("%s/model.h5"%path)
 print("Loaded model from disk")
+#Change initial_epoch to last epoch number
+initial_epoch = 10 #change this appropriately to last epoch in already trained model
+num_epochs = 20 # Change appropriately to total number of epochs to train (already trained + extra epochs) (for eg. 10 already +10 now)
 '''
 
 print(model.summary())
 
 print('compiltion started')
 
-model.compile(loss='sparse_categorical_crossentropy',optimizer=tf.keras.optimizers.Adam(),metrics=['sparse_categorical_accuracy'])
-
 #Assigning Class weights (approximately)
-class_weight = {0: 0.8,1: 0.6,2: 0.6,3: 0.15}
-class_weights= [class_weight]*num_output
+class_weight = {0: 0.8, 1: 0.6, 2: 0.6, 3: 0.15}
+class_weights = {}
+metrics_array = {}
+loss_array = {}
+for i in range(1,num_output+1):
+    name = f'output_{i}'
+    metrics_array[name] = 'sparse_categorical_accuracy'
+    loss_array[name] = 'sparse_categorical_crossentropy'
+    class_weights[name] = class_weight
+
+model.compile(loss=loss_array,optimizer=tf.keras.optimizers.Adam(),metrics=metrics_array)
 
 checkpoint = ModelCheckpoint(filepath= path+'/checkpoint-{epoch:02d}-{val_loss:.2f}.hdf5',period=2)
 callback = tf.keras.callbacks.LearningRateScheduler(scheduler)
@@ -257,7 +266,7 @@ with open("%s/model.yaml"%path, "w") as yaml_file:
 print('Training started')
 
 start_time=time.time()
-history = model.fit_generator(traingenerator(X_train,y_train,num_batchsize), validation_data=valgenerator(X_val,y_val,num_batchsize), steps_per_epoch = steps_per_epoch, validation_steps=validation_steps, epochs = num_epochs, initial_epoch=0, verbose=2,class_weight=class_weights, callbacks=[callback,checkpoint]) 
+history = model.fit(traingenerator(X_train,y_train,num_batchsize), validation_data=valgenerator(X_val,y_val,num_batchsize), steps_per_epoch = steps_per_epoch, validation_steps=validation_steps, epochs = num_epochs, initial_epoch=initial_epoch, verbose=2,class_weight=class_weights, callbacks=[callback,checkpoint]) 
 end_time=time.time()
 print('Time taken for training model= %f s'%(end_time-start_time))
 
@@ -269,4 +278,10 @@ with open("%s/model.yaml"%path, "w") as yaml_file:
 # serialize weights to HDF5
 model.save_weights("%s/model.h5"%path)
 print("Saved model to disk")
+
+print('Saving loss,val_loss,lr among the history of the model. There are several other items in history like output_1_sparse_categorical_accuracy etc., printing history.history.keys() shows you all the items.')
+#print(history.history.keys())
+for i in ['loss','val_loss','lr'] :
+    np.savetxt('%s/%s.txt'%(path,i),history.history[i])
+print('history finished')
 
