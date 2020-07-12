@@ -49,7 +49,7 @@ num_val   = 5000
 num_test  = 5000
 
 bin_size   = 4 #In this model, the data is already binned to size 5k from original spectra of size 25k. This is additional binning.
-input_size= 5121//bin_size + 1 
+input_size= 5121//bin_size  
 num_output= input_size  #Number of outputs can be set as per choice. For this model, we are classifying each point. Hence, number of outputs are equal to number of points in input 
 num_class = 4
 batch_size = 128
