@@ -266,7 +266,7 @@ with open("%s/model.yaml"%path, "w") as yaml_file:
 print('Training started')
 
 start_time=time.time()
-history = model.fit(traingenerator(X_train,y_train,num_batchsize), validation_data=valgenerator(X_val,y_val,num_batchsize), steps_per_epoch = steps_per_epoch, validation_steps=validation_steps, epochs = num_epochs, initial_epoch=initial_epoch, verbose=2,class_weight=class_weights, callbacks=[callback,checkpoint]) 
+history = model.fit_generator(traingenerator(X_train,y_train,num_batchsize), validation_data=valgenerator(X_val,y_val,num_batchsize), steps_per_epoch = steps_per_epoch, validation_steps=validation_steps, epochs = num_epochs, initial_epoch=initial_epoch, verbose=2,class_weight=class_weights, callbacks=[callback,checkpoint]) 
 end_time=time.time()
 print('Time taken for training model= %f s'%(end_time-start_time))
 
