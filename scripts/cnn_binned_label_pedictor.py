@@ -40,7 +40,7 @@ def mkdir_p(path):
         else:
             raise
             
-path = './../models/cnn_model_classification__lay_6__ksize_5__psize_3__dilrate_1__dropout_2__0.25__binsize__20__epochs_10__bs_128__train_28k__val_2k___generator_inp_size_1281_test_pos_enc_t'
+path = './../models/cnn_model_classification__lay_6__ksize_5__psize_3__dilrate_1__dropout_2__0.25__binsize__20__epochs_10__bs_128__train_90k__val_5k___generator_inp_size_2560_test_pos_enc_f'
 mkdir_p(path)
 print('path created')
 
@@ -48,11 +48,10 @@ num_train = 90000
 num_val   = 5000
 num_test  = 5000
 
-bin_size   = 4 #In this model, the data is already binned to size 5k from original spectra of size 25k. This is additional binning.
+bin_size   = 2 #In this model, the data is already binned to size 5k from original spectra of size 25k. This is additional binning.
 input_size= 5121//bin_size  
 num_output= input_size  #Number of outputs can be set as per choice. For this model, we are classifying each point. Hence, number of outputs are equal to number of points in input 
 num_class = 4
-batch_size = 128
 steps_per_epoch = 200 #number of training steps
 validation_steps = 10 #number of validation steps
 pos_enc  = True
@@ -163,9 +162,9 @@ def valgenerator(X_val, y_val, num_batchsize):
     
     while 1:
         for i in range(num_val//num_batchsize):
-            z_train = y_train[:,i*num_batchsize:(i+1)*num_batchsize]
+        z_val = y_val[:,i*num_batchsize:(i+1)*num_batchsize]
             print(i)
-            yield X_train[i*num_batchsize:(i+1)*num_batchsize], list(z_train)
+            yield X_val[i*num_batchsize:(i+1)*num_batchsize], list(z_val)
             
         
 
@@ -242,7 +241,7 @@ print(model.summary())
 print('compiltion started')
 
 #Assigning Class weights (approximately)
-class_weight = {0: 0.8, 1: 0.6, 2: 0.6, 3: 0.15}
+class_weight = {0: 0.713, 1: 0.095, 2: 0.190, 3: 0.002}
 class_weights = {}
 metrics_array = {}
 loss_array = {}
