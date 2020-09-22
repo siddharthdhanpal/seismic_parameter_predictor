@@ -54,7 +54,7 @@ num_output= input_size  #Number of outputs can be set as per choice. For this mo
 num_class = 4
 steps_per_epoch = 200 #number of training steps
 validation_steps = 10 #number of validation steps
-pos_enc  = True
+pos_enc  = False
 num_epochs     = 10
 initial_epoch  = 0
 num_batchsize  = 128
@@ -79,6 +79,15 @@ print('loaded mode data and its shape is (%d,%d)'%(labels.shape[0],labels.shape[
 labels = skimage.measure.block_reduce(labels,block_size=(1,bin_size),func=np.min)[:,:-1]
 labels = labels.astype(np.int32)
 
+labels_per_bin = np.empty((4,labels.shape[1]))
+for j in range(labels.shape[1]):
+    for i in range(4):
+        labels_per_bin[i,j] = np.where(labels[:,j]==i)[0].shape[0]
+relative_ratio   = 100000/labels_per_bin
+ratio_sum        = np.sum(relative_ratio,axis=0)
+normalized_ratio = relative_ratio/ratio_sum
+
+labels = to_categorical(labels)
 print('Binned label data and its shape is (%d,%d)'%(labels.shape[0],labels.shape[1]))
 
 #Reduces the spectrum data taking the bin_size number of points to 1 point defined by function in func. Ignores the last datapoint.
@@ -123,12 +132,12 @@ if pos_enc ==True:
 
 X_train=spectrum_data[:num_train]
 y_train=labels[:num_train]
-y_train= y_train.T # Reshaping labels array to (num_outputs,num_examples)
+y_train= np.transpose(y_train,(1,0,2)) # Reshaping labels array to (num_outputs,num_examples,num_classes #y_train.T # Reshaping labels array to (num_outputs,num_examples)
 
 
 X_val = spectrum_data[num_train:num_train+num_val]
 y_val = labels[num_train:num_train+num_val]
-y_val = y_val.T # Reshaping labels array to (num_outputs,num_examples)
+y_val = np.transpose(y_val,(1,0,2)) # Reshaping labels array to (num_outputs,num_examples,num_classes) #y_val.T # Reshaping labels array to (num_outputs,num_examples)
 
 
 del spectrum_data
@@ -162,7 +171,7 @@ def valgenerator(X_val, y_val, num_batchsize):
     
     while 1:
         for i in range(num_val//num_batchsize):
-        z_val = y_val[:,i*num_batchsize:(i+1)*num_batchsize]
+            z_val = y_val[:,i*num_batchsize:(i+1)*num_batchsize]
             print(i)
             yield X_val[i*num_batchsize:(i+1)*num_batchsize], list(z_val)
             
@@ -217,6 +226,33 @@ def cnn_model(input_size, num_output, filters, kernel_size, strides, pool_size, 
     model = Model(inputs=visible, outputs=output)
     return model
 
+def weighted_categorical_crossentropy(weights):
+    """
+    A weighted version of keras.objectives.categorical_crossentropy
+
+    Variables:
+        weights: numpy array of shape (C,) where C is the number of classes
+
+    Usage:
+        weights = np.array([0.5,2,10]) # Class one at 0.5, class 2 twice the normal weights, class 3 10x.
+        loss = weighted_categorical_crossentropy(weights)
+        model.compile(loss=loss,optimizer='adam')
+    """
+
+    weights = K.variable(weights)
+
+    def loss(y_true, y_pred):
+        # scale predictions so that the class probas of each sample sum to 1
+        y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
+        # clip to prevent NaN's and Inf's
+        y_pred = K.clip(y_pred, K.epsilon(), 1 - K.epsilon())
+        # calc
+        loss = y_true * K.log(y_pred) * weights
+        loss = -K.sum(loss, -1)
+        loss = K.mean(loss,-1)
+        return loss
+
+    return loss
 
 
 model = cnn_model(input_size, num_output,kernel_size = 5,strides = 1,pool_size = 3,filters = 16,dilation_rate = 1, pos_enc=pos_enc)
@@ -241,15 +277,15 @@ print(model.summary())
 print('compiltion started')
 
 #Assigning Class weights (approximately)
-class_weight = {0: 0.713, 1: 0.095, 2: 0.190, 3: 0.002}
+class_weight = 10.*np.array([0.713,0.095,0.190,0.002])#{0: 0.713, 1: 0.095, 2: 0.190, 3: 0.002}
 class_weights = {}
 metrics_array = {}
 loss_array = {}
 for i in range(1,num_output+1):
     name = f'output_{i}'
-    metrics_array[name] = 'sparse_categorical_accuracy'
-    loss_array[name] = 'sparse_categorical_crossentropy'
-    class_weights[name] = class_weight
+    metrics_array[name] = 'categorical_accuracy'#'sparse_categorical_accuracy'
+    loss_array[name] = weighted_categorical_crossentropy(class_weight)#(normalized_ratio[:,i-1])#'sparse_categorical_crossentropy'
+    class_weights[name] = class_weight#normalized_ratio[:,i-1]
 
 model.compile(loss=loss_array,optimizer=tf.keras.optimizers.Adam(),metrics=metrics_array)
 
@@ -265,7 +301,7 @@ with open("%s/model.yaml"%path, "w") as yaml_file:
 print('Training started')
 
 start_time=time.time()
-history = model.fit_generator(traingenerator(X_train,y_train,num_batchsize), validation_data=valgenerator(X_val,y_val,num_batchsize), steps_per_epoch = steps_per_epoch, validation_steps=validation_steps, epochs = num_epochs, initial_epoch=initial_epoch, verbose=2,class_weight=class_weights, callbacks=[callback,checkpoint]) 
+history = model.fit_generator(traingenerator(X_train,y_train,num_batchsize), validation_data=valgenerator(X_val,y_val,num_batchsize), steps_per_epoch = steps_per_epoch, validation_steps=validation_steps, epochs = num_epochs, initial_epoch=initial_epoch, verbose=2, callbacks=[callback,checkpoint]) 
 end_time=time.time()
 print('Time taken for training model= %f s'%(end_time-start_time))
 
