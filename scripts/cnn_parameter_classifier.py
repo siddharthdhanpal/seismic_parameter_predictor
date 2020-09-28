@@ -42,13 +42,13 @@ num_test       = 5000
 num_validation = 5000
 examples       = num_train + num_validation + num_test
 
-num_classes    = 30
+num_classes    = 50
 num_epochs     = 25
 num_batchsize  = 128
 loss           = 'sparse_categorical_crossentropy'
 pos_enc        = False #False/True
 
-path = './../models/cnn_lstm_attention_model__params_1_inc__pos_enc_f__cnn_lay_6_lstm_lay_2_fil_256_dlay_1_n_200__drop_2_0.25__ksize_5__filters_16__psize_3__dil_rate_1__num_cl_30__epochs_25__bs_128__train_eg_590k__activ_relu_numax_262'
+path = './../models/test_git_code_parameter_classifier'
 
 
 mkdir_p(path)
@@ -57,26 +57,16 @@ print('path created')
 #loading X data
 start_time=time.time()
 print(start_time)
-X = np.load('/mnt/sda/siddharth/code_0_8_95/generator_folder/data_prepared_X_llc_1040004_numax_262.npy')
+X = np.load('./../data_regression/data_100k.npy')
 end_time=time.time()
 print(X.shape)
 print(end_time)
 print('Time taken for loading data= %f s'%(end_time-start_time))
 
 
+Y = np.loadtxt('./../data_regression/data_y_100k.npy')
 
-range_array = np.load('/mnt/sda/siddharth/code_0_8_95/range_array_1040004.npy')
-numax = range_array[:,0]
-indices, = np.where(numax<262.)
 
-Y = np.loadtxt('/mnt/sda/siddharth/code_0_8_95/labels_llc_1040004_unnormalized.npy')
-
-inc = np.loadtxt('/mnt/sda/siddharth/code_0_8_95/labels_inc_llc_1040004_2.npy')
-
-indices, = np.where((numax<262.))
-
-Y = Y[indices]
-inc = inc[indices]
 
 print(X.shape,Y.shape)
 
@@ -84,6 +74,8 @@ print(X.shape,Y.shape)
 print('dataset preparation completed')
 # 5 parameters among these Y. (average core rotation, average env rot, Delta nu, Delta pi, coupling factor q)
 aer, acr, Dnu, Dp, epsilon_g ,q = Y[:,0], Y[:,1], Y[:,2], Y[:,7], Y[:,8], Y[:,9] 
+
+inc = Y[:,-1]
 
 epsilon_p = Y[:,3] 
 
@@ -106,7 +98,7 @@ epsilon_p = scale_parameter(epsilon_p)
 inc = scale_parameter(inc)
 
 
-parameter = inc
+parameter = Dnu
 parameter = parameter*num_classes
 parameter = np.floor(parameter)
 parameter = parameter.astype('int')
