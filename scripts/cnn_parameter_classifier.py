@@ -525,8 +525,7 @@ print('Time taken for training= %f s'%(end_time-start_time))
 predictions = model.predict(X)
 predictions = np.array(predictions)
 predictions = np.squeeze(predictions)
-predictions = predictions.T
-np.save('%s/predicted_parameters.npy'%path,predictions)
+np.save('%s/predicted_probabilities.npy'%path,predictions)
 np.savetxt('%s/sample_weights.txt'%path,sample_weights)
 
 print('written predictions')
